@@ -109,32 +109,7 @@
     box-shadow: 0 3px 14px rgba(0,0,0,.12);
     max-width: 300px;
   }
-  #preview img {
-    display: block;
-    max-width: 300px;
-    width: auto;
-    height: auto;
-    opacity: 0;
-    transition: opacity .16s ease-out;
-  }
-  #preview img.ready { opacity: 1; }
-
-  /* small centred spinner while the thumbnail loads */
-  #preview.loading::after {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 16px;
-    height: 16px;
-    margin: -8px 0 0 -8px;
-    border: 2px solid var(--line);
-    border-top-color: var(--dim);
-    border-radius: 50%;
-    animation: pvspin .7s linear infinite;
-  }
-  @keyframes pvspin { to { transform: rotate(360deg); } }
-  #preview.loading { min-width: 44px; min-height: 44px; }
+  #preview img { display: block; max-width: 300px; width: auto; height: auto; }
 
   /* ---------- info ---------- */
   #info { margin-top: 8px; }
@@ -193,11 +168,9 @@
     cursor: zoom-in;
     user-select: none;
     -webkit-user-drag: none;
-    opacity: 0;
-    transition: opacity .2s ease-out, transform .28s cubic-bezier(.25,1,.5,1);
+    transition: transform .28s cubic-bezier(.25,1,.5,1);
     max-height: 100vh!important;
   }
-  #lb .frame img.shown { opacity: 1; }
 
 
   /* Zoomed: the browser grows the image outward from transform-origin,
@@ -317,6 +290,8 @@
       <p>I believe there is a contradiction most important which I pursue. The more precise and on point a representative painting is rendered, the more inherent chaos can be allowed. The space in between the recognizable reality and the actual chaos of matter is a space where the questions remain and the viewer roams free.</p>
       <p>Kitsch is always present when we look at the world as images. Images don’t take long to become a cover of the real. Paintings have a tendency to become kitsch, or paraphrasing it self, rather than staying authentic. But kitsch as imagery is also super interesting in its use of mundane vocabulary, big feelings and schematic beauty. Is it possible to paint the kitsch out of the landscape?</p>
       <p>When I look at the series #1 - #71 I realise that some of the early paintings in this respect have the ability to match the later ones, whereas of course, along the way there are examples of paintings that fall into the trap, and become quite kitschy, closing the space where the questions should reside. This observation tells me that better technical skills do not offer the painter a safe haven. On the contrary, with greater skills comes greater responsibility. The most dangerous of all is to repeat yesterdays “triumph”.</p>
+      <h2>CV</h2>
+      <p>(CV goes here.)</p>
       <!-- ============== end of editable block ================== -->
     </section>
   </div>
@@ -435,37 +410,10 @@
   var previewImg = preview.querySelector("img");
   var hideTimer  = null;
   var pvIndex    = 0;
-  var pvLoadedFor = -1;      /* folder number already decoded */
-  var pvWanted    = -1;      /* folder number the cursor is over */
-  function pvIndexN() { return items[pvIndex] ? items[pvIndex].n : -1; }
 
-  /* Blank the box and spin, then load. The previous thumbnail is never
-     left on screen waiting for the next one, which is what made fast
-     movement down the list feel laggy. */
-  function loadPreview(n) {
-    pvWanted = n;
-
-    if (pvLoadedFor === n) {          /* already decoded: just show it */
-      previewImg.classList.remove("ready");
-      preview.classList.remove("loading");
-      requestAnimationFrame(function () { previewImg.classList.add("ready"); });
-      return;
-    }
-
-    previewImg.classList.remove("ready");
-    previewImg.removeAttribute("src");
-    preview.classList.add("loading");
-
-    previewImg.src = USE_ORIGINALS ? originalSrc(n) : previewSrc(n);
+  function previewSourceFor(n) {
+    return USE_ORIGINALS ? originalSrc(n) : previewSrc(n);
   }
-
-  previewImg.addEventListener("load", function () {
-    /* a late load for a row the cursor has left must not appear */
-    if (pvWanted !== pvIndexN()) return;
-    pvLoadedFor = pvWanted;
-    preview.classList.remove("loading");
-    previewImg.classList.add("ready");
-  });
 
   previewImg.addEventListener("error", function () {
     /* preview.jpg missing -> fall back to the original once */
@@ -525,7 +473,7 @@
     clearTimeout(hideTimer);
     pvIndex = +a.dataset.i;
     preview.style.display = "block";
-    loadPreview(items[pvIndex].n);
+    previewImg.src = previewSourceFor(items[pvIndex].n);
     placePreview(a);
   });
 
@@ -708,7 +656,6 @@
 
     candIndex = 0;
     inFallback = false;
-    lbImg.classList.remove("shown");     /* fade in from here */
     barStart();
     setSingleSrc(item.cands, 0);
   }
@@ -716,7 +663,6 @@
   lbImg.addEventListener("load", function () {
     inFallback = false;
     barDone();
-    requestAnimationFrame(function () { lbImg.classList.add("shown"); });
 
     /* portrait (or very tall) images are bounded by width instead of
        height, otherwise the long edge would overflow the stage */
