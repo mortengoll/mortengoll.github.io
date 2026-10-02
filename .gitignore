@@ -1,0 +1,14 @@
+/[0-9]*/**
+!/[0-9]*/preview.avif
+!/[0-9]*/preview.webp
+!/[0-9]*/preview.jpg
+!/[0-9]*/mid.avif
+!/[0-9]*/mid.webp
+!/[0-9]*/mid.jpg
+!/[0-9]*/full.avif
+!/[0-9]*/full.webp
+!/[0-9]*/full.jpg
+
+node_modules/
+package-lock.json
+.DS_Store

@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Morten Goll</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #111111;
+    --dim: #8a8a8a;
+    --line: #e6e6e6;
+    --bar: #b8b8b8;
+    --maxw: 960px;
+    --pad: 20px;
+    --fs: 14px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Courier New", Courier, monospace;
+    font-size: var(--fs);
+    line-height: 1.4;
+  }
+
+  .shell {
+    max-width: var(--maxw);
+    margin: 0 auto;
+    padding-left: var(--pad);
+    padding-right: var(--pad);
+  }
+
+  /* ---------- header ---------- */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--bg);
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .bar-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+  }
+  header a, header button {
+    font: inherit;
+    color: var(--fg);
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  header a:hover, header button:hover { text-decoration: underline; }
+  header a.active, header button.active { text-decoration: underline; }
+
+  /* ---------- loading bar (lightbox only) ---------- */
+  #loadbar {
+    position: fixed;
+    top: 0; left: 0;
+    height: 3px;
+    width: 0%;
+    background: var(--bar);
+    z-index: 120;
+    display: none;
+  }
+  #loadbar.on { display: block; }
+
+  /* ---------- main ---------- */
+  main { padding-bottom: 64px; }
+  .hidden { display: none !important; }
+
+  /* ---------- list ---------- */
+  ul.gallery {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+  }
+  ul.gallery li { border-bottom: 1px solid var(--line); }
+  ul.gallery li:first-child { border-top: 1px solid var(--line); }
+  ul.gallery a {
+    display: block;
+    padding: 3px 0;
+    color: var(--fg);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  ul.gallery a:hover { text-decoration: underline; }
+  ul.gallery .n { display: inline-block; min-width: 3.4em; }
+
+  /* ---------- hover preview ---------- */
+  #preview {
+    position: fixed;
+    z-index: 80;
+    pointer-events: none;
+    display: none;
+    border: 1px solid var(--line);
+    background: #fff;
+    padding: 2px;
+    box-shadow: 0 3px 14px rgba(0,0,0,.12);
+    max-width: 300px;
+  }
+  #preview img { display: block; max-width: 300px; width: auto; height: auto; }
+
+  /* ---------- info ---------- */
+  #info { margin-top: 8px; }
+  #info h2 { font-size: 1em; font-weight: 700; margin: 1.2em 0 .3em; }
+  #info p { margin: 0 0 1em; }
+
+  /* ---------- lightbox ---------- */
+  #lb {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: none;
+    background: #fff;
+  }
+  #lb.open { display: block; }
+
+  #lb .stage {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 52px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* The frame clips the zoomed image. It is sized by its content,
+     but capped to the stage so the COVER dimensions drive the fit. */
+  #lb .frame {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    max-width: 100%;
+    max-height: 100%;
+    line-height: 0;
+  }
+
+  /* Fit rule: height is bounded by the stage height, and the width
+     follows from the image's own aspect ratio. Setting only height
+     (plus max-width) is what makes the whole painting visible —
+     constraining both axes lets the browser pick the larger one. */
+  /* UI chrome reserved around the image:
+       top    46px  close button + "#N" marker
+       bottom 52px  caption bar (the stage already stops here)
+       sides  64px  the prev/next arrows, which overhang the stage
+       plus   20px  breathing room all round
+     Bounding the image by this box (not 100vh) is what keeps the whole
+     painting visible without anything sitting on top of it. */
+  #lb .frame img {
+    display: block;
+    height: auto;
+    width: auto;
+    max-height: calc(100vh - 52px - 46px - 20px);
+    max-width: calc(100% - 128px);
+    cursor: zoom-in;
+    user-select: none;
+    -webkit-user-drag: none;
+    transition: transform .28s cubic-bezier(.25,1,.5,1);
+    max-height: 100vh!important;
+  }
+
+
+  /* Zoomed: the browser grows the image outward from transform-origin,
+     which we set to the exact click point. Nothing else to compute. */
+  #lb .frame img.is-zoomed {
+    transform: scale(var(--zoom, 2.5));
+    cursor: zoom-out;
+  }
+
+  #lb .caption {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    border-top: 1px solid var(--line);
+    background: var(--bg);
+    font-size: 12px;
+    text-align: center;
+    padding: 0 12px;
+    color: var(--dim);
+  }
+  #lb .caption .err { color: var(--dim); }
+
+  #lb button {
+    font: inherit;
+    color: var(--fg);
+    background: none;
+    border: 0;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+  #lb button:hover { text-decoration: underline; }
+
+  #lb .nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 20px;
+    line-height: 1;
+    padding: 8px 10px;
+    user-select: none;
+    z-index: 3;
+  }
+  #lb .prev { left: 2px; }
+  #lb .next { right: 2px; }
+  #lb .close {
+    position: absolute;
+    top: 6px; right: 8px;
+    font-size: 20px;
+    line-height: 1;
+    z-index: 3;
+  }
+  #lb .pos {
+    position: absolute;
+    top: 10px; left: 10px;
+    color: var(--dim);
+    font-size: 12px;
+    z-index: 3;
+  }
+
+  /* A tall/portrait image is bounded by the stage width first, so
+     cropping never happens on the long edge. */
+  #lb .frame img.tall {
+    max-height: none;
+    max-width: calc(100% - 128px);
+    height: auto;
+  }
+
+  @media (max-width: 700px) {
+    #lb .nav {
+      bottom: -1%;
+      top: unset;
+    }
+    :root { --fs: 16px; --pad: 20px; }
+    #lb .frame img {
+      max-height: calc(100vh - 56px - 40px - 16px);
+      max-width: 100%;
+    }
+    #lb .frame img.tall { max-width: calc(100% - 72px); }
+    header { padding-top: 20px; }
+    #lb .stage { bottom: 56px; }
+    #lb .caption { height: 56px; }
+    #preview { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loadbar"></div>
+
+<header>
+  <div class="shell">
+    <div class="bar-row">
+      <a href="#" id="brand">Morten Goll</a>
+      <button id="infoToggle" type="button" aria-expanded="false">Info</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="shell">
+    <ul class="gallery" id="gallery"></ul>
+
+    <section id="info" class="hidden">
+      <!-- ========================================================
+           INFO / CV — replace these two blocks.
+           ======================================================== -->
+      <strong>About #1-#X</strong>
+      <p>In 1999, I realized that painting was no longer my medium. I had this epiphany in my studio in Los Angeles, that every brushstroke was covering up reality rather than revealing it. My next show was Artistic Crisis Management Center (ACMaC). It was a performance, at which I sat as in the gallery space, offering frank discussions on artistic crisis management. The next 20 years I spent working with different artistic/activist strategies. The attempt was to redefine the audience and engaging in the political scene, attempting to define reality in in a way that allowed “audience” to become co-writers of their own reality. The absolute climax of this endeavour was Trampoline House as it existed from 2010-2020.<p>
+      <p>In 2023, I had come to and end-point of this journey. I was probably somewhat traumatised by all the social work which had been a big part of Trampoline House, but also, I had this sense of having lost something along on the road. My girlfriend told me I was lying to myself about myself. One day I found a studio outside Copenhagen, and looking out the windows from 3rd floor, I had a second epiphany: I realised that it was time for me to reboot painting.<p>
+      <p>The project presented on this website consists of all the paintings done in oil on canvas since that moment. #1 being the first.</p>
+      <p>It reveals a path of learning. Along the way, it is possible to see a painter trying different approaches, abandoning ideas, but working on the same motives over and over again. Sometimes fucking up, but using the experience to improve the following paintings. As matter, as a sign, as representation, as chaos, as revealing reality rather than painting it over.</p>
+      <p>The first 50 canvasses were all on canvas 30X40 cm. The reason was very practical: I knew it would take at least 2 years and a lot of paint to begin to understand painting. I thought better keep it small, as I do not have much storage. From #50 onwards, the paintings are usually bigger.</p>
+      <p>I believe there is a contradiction most important which I pursue. The more precise and on point a representative painting is rendered, the more inherent chaos can be allowed. The space in between the recognizable reality and the actual chaos of matter is a space where the questions remain and the viewer roams free.</p>
+      <p>Kitsch is always present when we look at the world as images. Images don’t take long to become a cover of the real. Paintings have a tendency to become kitsch, or paraphrasing it self, rather than staying authentic. But kitsch as imagery is also super interesting in its use of mundane vocabulary, big feelings and schematic beauty. Is it possible to paint the kitsch out of the landscape?</p>
+      <p>When I look at the series #1 - #71 I realise that some of the early paintings in this respect have the ability to match the later ones, whereas of course, along the way there are examples of paintings that fall into the trap, and become quite kitschy, closing the space where the questions should reside. This observation tells me that better technical skills do not offer the painter a safe haven. On the contrary, with greater skills comes greater responsibility. The most dangerous of all is to repeat yesterdays “triumph”.</p>
+      <h2>CV</h2>
+      <p>(CV goes here.)</p>
+      <!-- ============== end of editable block ================== -->
+    </section>
+  </div>
+</main>
+
+<div id="preview"><img alt=""></div>
+
+<div id="lb" role="dialog" aria-modal="true" aria-label="Image viewer">
+  <span class="pos" id="lbPos"></span>
+  <button class="close" id="lbClose" type="button" aria-label="Close">&times;</button>
+  <button class="nav prev" id="lbPrev" type="button" aria-label="Previous image">&#8592;</button>
+  <button class="nav next" id="lbNext" type="button" aria-label="Next image">&#8594;</button>
+  <div class="stage" id="lbStage">
+    <div class="frame" id="lbFrame"><img id="lbImg" alt=""></div>
+  </div>
+  <div class="caption"><span id="lbCap"></span><span id="lbHint"></span></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ============================================================
+     FILENAME MAP
+     Each value is the part between "#N." and ".JPG" — the size,
+     which is also the caption. Correct any line that differs.
+     ============================================================ */
+  var SIZES = {
+     1: "30X40cm",     2: "30X40cm",     3: "30X40cm",     4: "30X40cm",
+     5: "30X40cm",     6: "30X40cm",     7: "30X40cm",     8: "30X40cm",
+     9: "30X40cm",    10: "30X40cm",    11: "30X40cm",    12: "30X40cm",
+    13: "30X40cm",    14: "30X40cm",    15: "30X40cm",    16: "30X40cm",
+    17: "30X40cm",    18: "30X40cm",    19: "30X40cm",    20: "30X40cm",
+    21: "30X40cm",    22: "30X40cm",    23: "30X40cm",    24: "30X40cm",
+    25: "30X40cm",    26: "30X40cm",    27: "30X40cm",    28: "30X40cm",
+    29: "30X40cm",    30: "30X40cm",    31: "30X40cm",    32: "30X40cm",
+    33: "30X40cm",    34: "30X40cm",    35: "30X40cm",    36: "30X40cm",
+    37: "30X40cm",    38: "30X40cm",    39: "30X40cm",    40: "30X40cm",
+    41: "30X40cm",    42: "30X40cm",    43: "30X40cm",    44: "30X40cm",
+    45: "30X40cm",    46: "30X40cm",    47: "30X40cm",    48: "30X40cm",
+    49: "30X40cm",    50: "30X40cm",    51: "30X40cm",    52: "30X40cm",
+    53: "30X40cm",    54: "30X40cm",    55: "30X40cm",    56: "30X40cm",
+    57: "30X40cm",    58: "30X40cm",    59: "30X40cm",    60: "30X40cm",
+    61: "30X40cm",    62: "30X40cm",    63: "95X115cm",   64: "60X80cm",
+    65: "30X40cm",    66: "85X110cm",   67: "30X40cm",    68: "90X120cm",
+    69: "30X40cm",    70: "85X110cm",   71: "85X115cm"
+  };
+
+  var COUNT = 71;
+
+  /* Derived file names produced by the ImageMagick script.
+     preview.jpg  400px   hover thumbnail
+     mid.jpg     1600px   normal screens in the lightbox
+     full.jpg    original big screens and zoom          */
+  /* Folders are named "1", "2", "3" ... — plain digits, so no
+     encoding is needed. The path stays relative, which resolves
+     correctly from file:///.../index.html and from a hosted URL. */
+  var DIR = function (n)  { return n + "/"; };
+
+  function previewSrc(n) { return DIR(n) + "preview.jpg"; }
+  function midSrc(n)     { return DIR(n) + "mid.jpg"; }
+  function fullSrc(n)    { return DIR(n) + "full.jpg"; }
+
+  /* ------------------------------------------------------------
+     THE ONE SWITCH
+     false = optimised files are ready  -> use preview/mid/full
+     true  = no optimised files yet     -> use the originals
+     ------------------------------------------------------------ */
+  var USE_ORIGINALS = false;
+
+  function originalSrc(n) {
+    /* tries "1/1.30X40cm.JPG" first, then the "#N." spelling */
+    return DIR(n) + n + "." + (SIZES[n] || "") + ".JPG";
+  }
+
+  function originalSrcHash(n) {
+    return DIR(n) + "%23" + n + "." + (SIZES[n] || "") + ".JPG";
+  }
+
+  function candidates(n) {
+    if (USE_ORIGINALS) return [originalSrc(n)];
+    return [fullSrc(n), midSrc(n), previewSrc(n),
+            originalSrc(n), originalSrcHash(n)];
+  }
+
+  /* ============================================================
+     BUILD LIST
+     ============================================================ */
+  var gallery = document.getElementById("gallery");
+  var items = [];
+
+  for (var n = 1; n <= COUNT; n++) {
+    items.push({
+      n: n,
+      label: SIZES[n] || "",
+      cands: candidates(n)
+    });
+
+    var li = document.createElement("li");
+    var a  = document.createElement("a");
+    a.href = previewSrc(n);
+    a.dataset.i = String(items.length - 1);
+    a.innerHTML = '<span class="n">#' + n + '</span>';
+    li.appendChild(a);
+    gallery.appendChild(li);
+  }
+    var andSoOn = document.createElement("li");
+    andSoOn.innerHTML = '<span class="n">..</span>';
+    gallery.appendChild(andSoOn);
+
+
+  /* ============================================================
+     HOVER PREVIEW
+     ============================================================ */
+  var preview    = document.getElementById("preview");
+  var previewImg = preview.querySelector("img");
+  var hideTimer  = null;
+  var pvIndex    = 0;
+
+  function previewSourceFor(n) {
+    return USE_ORIGINALS ? originalSrc(n) : previewSrc(n);
+  }
+
+  previewImg.addEventListener("error", function () {
+    /* preview.jpg missing -> fall back to the original once */
+    var item = items[pvIndex];
+    if (!item) { preview.style.display = "none"; return; }
+    var orig = originalSrc(item.n);
+    if (previewImg.getAttribute("src") !== orig && !USE_ORIGINALS) {
+      previewImg.src = orig;
+    } else {
+      preview.style.display = "none";
+    }
+  });
+
+  /* Anchored to the row's own vertical position, with a horizontal
+     nudge that varies per image so consecutive rows don't stack in
+     exactly the same column. Desktop only. */
+  var JITTER = 80;
+
+  function jitterFor(n) {
+    /* deterministic per folder number: same image, same offset */
+    var a = Math.sin(n * 12.9898) * 43758.5453;
+    var b = Math.sin(n * 78.233)  * 12345.6789;
+    return {
+      x: (a - Math.floor(a) - 0.5) * 2 * JITTER,
+      y: (b - Math.floor(b) - 0.5) * 2 * JITTER
+    };
+  }
+
+  function placePreview(link) {
+    var pw   = preview.offsetWidth;
+    var ph   = preview.offsetHeight;
+    var r    = link.getBoundingClientRect();
+    var item = items[+link.dataset.i] || { n: 1 };
+    var j    = jitterFor(item.n);
+
+    /* horizontal: centre of the viewport, nudged per image */
+    var x = (window.innerWidth - pw) / 2 + j.x;
+
+    /* vertical: follows the row this image belongs to, so the preview
+       reads as belonging to that line. */
+    var y = r.top + (r.height - ph) / 2;
+
+    /* never let it leave the screen */
+    var pad = 12;
+    if (x + pw > window.innerWidth  - pad) x = window.innerWidth  - pw - pad;
+    if (y + ph > window.innerHeight - pad) y = window.innerHeight - ph - pad;
+    if (x < pad) x = pad;
+    if (y < pad) y = pad;
+
+    preview.style.left = x + "px";
+    preview.style.top  = y + "px";
+  }
+
+  gallery.addEventListener("mouseover", function (e) {
+    var a = e.target.closest("a");
+    if (!a) return;
+    clearTimeout(hideTimer);
+    pvIndex = +a.dataset.i;
+    preview.style.display = "block";
+    previewImg.src = previewSourceFor(items[pvIndex].n);
+    placePreview(a);
+  });
+
+  gallery.addEventListener("mouseout", function (e) {
+    if (!e.target.closest("a")) return;
+    hideTimer = setTimeout(function () { preview.style.display = "none"; }, 50);
+  });
+
+  window.addEventListener("scroll", function () {
+    if (preview.style.display === "block") preview.style.display = "none";
+  }, { passive: true });
+
+  /* ============================================================
+     LOAD BAR — lightbox only
+     ============================================================ */
+  var loadbar = document.getElementById("loadbar");
+
+  function barStart() {
+    loadbar.style.width = "0%";
+    loadbar.classList.add("on");
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        if (loadbar.classList.contains("on")) loadbar.style.width = "82%";
+      });
+    });
+  }
+  function barDone() {
+    loadbar.style.width = "100%";
+    setTimeout(function () {
+      loadbar.classList.remove("on");
+      loadbar.style.width = "0%";
+    }, 180);
+  }
+  function barOff() {
+    loadbar.classList.remove("on");
+    loadbar.style.width = "0%";
+  }
+
+  /* ============================================================
+     LIGHTBOX + ZOOM
+     The lightbox loads one explicit file per attempt, walking
+     full -> mid -> preview -> original only if a load fails.
+     ============================================================ */
+  var lb      = document.getElementById("lb");
+  var lbImg   = document.getElementById("lbImg");
+  var lbCap   = document.getElementById("lbCap");
+  var lbPos   = document.getElementById("lbPos");
+  var lbStage = document.getElementById("lbStage");
+  var lbHint  = document.getElementById("lbHint");
+
+  var current   = 0;
+  var lastFocus = null;
+  var zoomed    = false;
+  var scale     = 1;
+  var tx = 0, ty = 0;
+  var dragging  = false;
+  var dragX = 0, dragY = 0, startTx = 0, startTy = 0;
+  /* ------------------------------------------------------------
+     ZOOM — via transform-origin.
+
+     Set transform-origin to the exact point clicked, then add the
+     scale class. The browser grows the image outward from that
+     point, so the clicked spot stays locked under the cursor with
+     no offset arithmetic at all. Zooming out removes the class and
+     resets the origin to centre once the transition has finished.
+
+     Zoom amount is derived from the image's on-screen size, so a
+     small image (portrait on a phone) is magnified less than a
+     large one — otherwise a phone would blow it up far too much.
+     ------------------------------------------------------------ */
+
+  var lbFrame = document.getElementById("lbFrame");
+  var zoomed  = false;
+  var originTimer = null;
+
+  var ZOOM_CAP_HIGH = 5.0;   /* ceiling for a large image   */
+  var ZOOM_CAP_LOW  = 3.0;   /* floor for a small image     */
+  var ZOOM_GROWTH   = 2.7;   /* how far past "fits" we go   */
+
+  function zoomAmount() {
+    var st = lbStage.clientWidth;
+    var w  = lbImg.clientWidth;
+    if (!st || !w) return 3;
+
+    /* how much the image would have to grow to fill the stage width */
+    var need = st / w;
+    var z = Math.min(need * ZOOM_GROWTH, ZOOM_CAP_HIGH);
+    return Math.max(z, ZOOM_CAP_LOW);
+  }
+
+  function clearOriginTimer() {
+    if (originTimer) { clearTimeout(originTimer); originTimer = null; }
+  }
+
+  /* Zoom out: drop the scale FIRST and let it animate back, then
+     reset the origin once the transition has finished. Doing both in
+     the same frame makes the browser interpolate two pivots at once,
+     which reads as a wobble. */
+  function zoomOut() {
+    lbImg.classList.remove("is-zoomed");
+    zoomed = false;
+    lbHint.textContent = "";
+    clearOriginTimer();
+
+    originTimer = setTimeout(function () {
+      originTimer = null;
+      if (!zoomed) lbImg.style.transformOrigin = "center center";
+    }, 320);   /* a little longer than the .28s transition */
+  }
+
+  function zoomIn(ev) {
+    /* Measure BEFORE the class is added, so the rect is the real
+       unzoomed box. Getting this order wrong was the earlier bug. */
+    var r = lbImg.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+
+    var x = ev.clientX - r.left;
+    var y = ev.clientY - r.top;
+
+    var xPct = (x / r.width)  * 100;
+    var yPct = (y / r.height) * 100;
+
+    /* keep the pivot inside the image */
+    xPct = Math.max(0, Math.min(100, xPct));
+    yPct = Math.max(0, Math.min(100, yPct));
+
+    lbImg.style.setProperty("--zoom", String(zoomAmount()));
+    lbImg.style.transformOrigin = xPct + "% " + yPct + "%";
+    lbImg.classList.add("is-zoomed");
+
+    zoomed = true;
+    lbHint.textContent = "click to zoom out";
+  }
+
+  function toggleZoom(ev) {
+    clearOriginTimer();
+    if (zoomed) { zoomOut(); return; }
+    if (!ev) {                              /* keyboard: zoom centre */
+      lbImg.style.setProperty("--zoom", String(zoomAmount()));
+      lbImg.style.transformOrigin = "50% 50%";
+      lbImg.classList.add("is-zoomed");
+      zoomed = true;
+      lbHint.textContent = "click to zoom out";
+      return;
+    }
+    zoomIn(ev);
+  }
+
+  /* Called by show() when moving to another image. */
+  function resetZoom() {
+    clearOriginTimer();
+    zoomed = false;
+    lbImg.classList.remove("is-zoomed");
+    lbImg.style.transformOrigin = "center center";
+    lbHint.textContent = "";
+  }
+
+  /* Candidate fallback: walk an explicit chain, never loop.
+     attempts is capped and each step moves strictly forward. */
+  var candIndex = 0;
+  var MAX_ATTEMPTS = 4;
+  var inFallback = false;
+
+  function setSingleSrc(cands, i) {
+    lbImg.removeAttribute("srcset");
+    lbImg.removeAttribute("sizes");
+    lbImg.src = cands[i];
+  }
+
+  function show(i) {
+    current = i;
+    var item = items[i];
+    resetZoom();
+    lbImg.removeAttribute("src");
+    lbImg.removeAttribute("srcset");
+    lbImg.removeAttribute("sizes");
+    lbCap.className = "";
+    lbCap.textContent = item.label;
+    lbPos.textContent = "#" + item.n + "  " + (i + 1) + "/" + items.length;
+
+    candIndex = 0;
+    inFallback = false;
+    barStart();
+    setSingleSrc(item.cands, 0);
+  }
+
+  lbImg.addEventListener("load", function () {
+    inFallback = false;
+    barDone();
+
+    /* portrait (or very tall) images are bounded by width instead of
+       height, otherwise the long edge would overflow the stage */
+    var nw = lbImg.naturalWidth  || 1;
+    var nh = lbImg.naturalHeight || 1;
+    var st = lbStage.getBoundingClientRect();
+    var stageRatio = (st.width  || 1) / (st.height || 1);
+    var imgRatio   = nw / nh;
+
+    if (imgRatio < stageRatio) lbImg.classList.add("tall");
+    else                       lbImg.classList.remove("tall");
+  });
+
+  lbImg.addEventListener("error", function () {
+    /* One forward step per failure. Never re-enters itself. */
+    if (inFallback) return;
+    inFallback = true;
+
+    var item = items[current];
+    candIndex += 1;
+
+    if (!item || candIndex >= item.cands.length || candIndex >= MAX_ATTEMPTS) {
+      inFallback = false;
+      barOff();
+      lbCap.className = "err";
+      lbCap.textContent = "#" + (item ? item.n : "?") + " \u2014 image not found";
+      return;
+    }
+
+    setSingleSrc(item.cands, candIndex);
+  });
+
+  function open(i) {
+    lastFocus = document.activeElement;
+    lb.classList.add("open");
+    document.body.style.overflow = "hidden";
+    show(i);
+    document.getElementById("lbClose").focus();
+  }
+
+  function close() {
+    lb.classList.remove("open");
+    document.body.style.overflow = "";
+    barOff();
+    resetZoom();
+    lbImg.removeAttribute("src");
+    lbImg.removeAttribute("srcset");
+    preview.style.display = "none";
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+
+  function step(d) { show((current + d + items.length) % items.length); }
+
+  gallery.addEventListener("click", function (e) {
+    var a = e.target.closest("a");
+    if (!a) return;
+    e.preventDefault();
+    open(+a.dataset.i);
+  });
+
+  document.getElementById("lbPrev").addEventListener("click", function (e) {
+    e.stopPropagation(); step(-1);
+  });
+  document.getElementById("lbNext").addEventListener("click", function (e) {
+    e.stopPropagation(); step(1);
+  });
+  document.getElementById("lbClose").addEventListener("click", function (e) {
+    e.stopPropagation(); close();
+  });
+
+  /* clicking the image locks the zoom onto that point;
+     clicking the backdrop around it closes the lightbox */
+  lbImg.addEventListener("click", function (e) {
+    e.stopPropagation();
+    toggleZoom(e);
+  });
+
+  lbStage.addEventListener("click", function (e) {
+    if (e.target === lbStage) close();
+  });
+
+  /* --- touch: pan while zoomed, swipe to change image when not --- */
+  var swipeX = 0, swipeY = 0, swipeT = 0, isSwiping = false;
+  var SWIPE_MIN = 45;        /* px before it counts as a swipe */
+  var SWIPE_MAX_TIME = 700;  /* ms — a slow drag is not a swipe */
+
+  lbStage.addEventListener("touchstart", function (e) {
+    if (e.touches.length !== 1) return;
+    var t = e.touches[0];
+    swipeX = t.clientX; swipeY = t.clientY;
+    swipeT = Date.now();
+    isSwiping = false;
+  }, { passive: true });
+
+  lbStage.addEventListener("touchmove", function (e) {
+    if (e.touches.length !== 1) return;
+    var t = e.touches[0];
+
+    /* watch for a horizontal swipe */
+    var dx = t.clientX - swipeX;
+    var dy = t.clientY - swipeY;
+    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) {
+      isSwiping = true;
+      lbHint.textContent = "";
+      /* subtle follow so it feels like the image is being dragged.
+         Skipped while zoomed, where transform carries the scale. */
+      if (!zoomed) {
+        lbImg.style.transform = "translateX(" + (dx * 0.35) + "px)";
+      }
+    }
+  }, { passive: true });
+
+  lbStage.addEventListener("touchend", function (e) {
+    if (!isSwiping) { lbImg.style.transform = ""; return; }
+
+    var t  = (e.changedTouches && e.changedTouches[0]) || null;
+    if (!t) { lbImg.style.transform = ""; return; }
+
+    var dx   = t.clientX - swipeX;
+    var dy   = t.clientY - swipeY;
+    var fast = (Date.now() - swipeT) < SWIPE_MAX_TIME;
+
+    if (Math.abs(dx) >= SWIPE_MIN && Math.abs(dx) > Math.abs(dy) && fast) {
+      lbImg.style.transform = "";
+      step(dx < 0 ? 1 : -1);      /* left = next, right = previous */
+    } else if (Math.abs(dx) < 12 && Math.abs(dy) < 12) {
+      /* a clean tap on the image zooms; on the backdrop, closes */
+      var onImg = (e.target === lbImg);
+      var tapEv = { clientX: t.clientX, clientY: t.clientY };
+      if (onImg) toggleZoom(tapEv); else close();
+    } else {
+      lbImg.style.transform = "";
+    }
+    isSwiping = false;
+  });
+
+  lbStage.addEventListener("touchcancel", function () {
+    isSwiping = false;
+    lbImg.style.transform = "";
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (!lb.classList.contains("open")) return;
+    if (e.key === "ArrowRight")     { e.preventDefault(); step(1); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); step(-1); }
+    else if (e.key === "Escape")    { e.preventDefault(); close(); }
+    else if (e.key === "z" || e.key === "Z") { e.preventDefault(); toggleZoom(null); }
+  });
+
+  /* ============================================================
+     INFO / LIST TOGGLE
+     ============================================================ */
+  var info   = document.getElementById("info");
+  var toggle = document.getElementById("infoToggle");
+  var brand  = document.getElementById("brand");
+
+  function showInfo() {
+    gallery.classList.add("hidden");
+    info.classList.remove("hidden");
+    toggle.setAttribute("aria-expanded", "true");
+    toggle.classList.add("active");
+    brand.classList.remove("active");
+    window.scrollTo(0, 0);
+  }
+  function showList() {
+    info.classList.add("hidden");
+    gallery.classList.remove("hidden");
+    toggle.setAttribute("aria-expanded", "false");
+    brand.classList.add("active");
+    toggle.classList.remove("active");
+    window.scrollTo(0, 0);
+  }
+
+  brand.classList.add("active");   /* the list is shown first */
+
+  toggle.addEventListener("click", function () {
+    if (info.classList.contains("hidden")) showInfo(); else showList();
+  });
+
+  brand.addEventListener("click", function (e) {
+    e.preventDefault();
+    if (!info.classList.contains("hidden")) showList();
+    else window.scrollTo(0, 0);
+  });
+})();
+</script>
+</body>
+</html>
