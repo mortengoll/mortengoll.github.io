@@ -4,14 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Morten Goll</title>
-<meta name="description" content="Paintings by Morten Goll">
-<meta property="og:title" content="Morten Goll">
-<meta property="og:description" content="Paintings by Morten Goll">
-<meta property="og:type" content="website">
-<meta property="og:url" content="https://mortengoll.github.io/">
-<meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Morten Goll">
-<meta name="twitter:description" content="Paintings by Morten Goll">
 <style>
   :root {
     --bg: #ffffff;
@@ -586,7 +578,6 @@
 
   var current   = 0;
   var lastFocus = null;
-  var lastImageN = null;      /* folder number currently open, for ?v= */
   var zoomed    = false;
   var scale     = 1;
   var tx = 0, ty = 0;
@@ -764,7 +755,6 @@
     document.body.style.overflow = "hidden";
     show(i);
     document.getElementById("lbClose").focus();
-    markImage(items[i]);
   }
 
   function close() {
@@ -776,16 +766,9 @@
     lbImg.removeAttribute("srcset");
     preview.style.display = "none";
     if (lastFocus && lastFocus.focus) lastFocus.focus();
-
-    lastImageN = null;
-    setUrl(null, null, true);
-    setMeta({ title: PAGE_TITLE, desc: "", img: "" });
   }
 
-  function step(d) {
-    show((current + d + items.length) % items.length);
-    markImage(items[current]);
-  }
+  function step(d) { show((current + d + items.length) % items.length); }
 
   gallery.addEventListener("click", function (e) {
     var a = e.target.closest("a");
@@ -897,8 +880,6 @@
     toggle.classList.add("active");
     brand.classList.remove("active");
     window.scrollTo(0, 0);
-    setUrl("info", "1", false);
-    setMeta({ title: PAGE_TITLE + " — Info", desc: "Info and CV", img: "" });
   }
   function showList() {
     info.classList.add("hidden");
@@ -907,8 +888,6 @@
     brand.classList.add("active");
     toggle.classList.remove("active");
     window.scrollTo(0, 0);
-    setUrl(null, null, true);
-    setMeta({ title: PAGE_TITLE, desc: "", img: "" });
   }
 
   brand.classList.add("active");   /* the list is shown first */
@@ -921,149 +900,6 @@
     e.preventDefault();
     if (!info.classList.contains("hidden")) showList();
     else window.scrollTo(0, 0);
-  });
-
-  /* ============================================================
-     SHAREABLE URLS
-       ?v=N     opens the lightbox on image N
-       ?info=1  opens the Info page
-     The address bar is kept in step, and the <head> meta tags are
-     rewritten so a pasted link previews with that image's title.
-     ============================================================ */
-
-  var PAGE_TITLE = "Morten Goll";
-
-  function baseUrl() {
-    return location.href.split("?")[0].split("#")[0];
-  }
-
-  /* Absolute URL of an image — relative paths do not work in the
-     og:image preview, so this is built from the document's own URL. */
-  function absUrl(path) {
-    return new URL(path, baseUrl()).href;
-  }
-
-  /* Write (or clear) a query parameter. replace = no new history entry,
-     which is what arrow-key paging uses so back leaves the lightbox in
-     one step instead of one per image. */
-  function setUrl(param, value, replace) {
-    var url = (param && value) ? baseUrl() + "?" + param + "=" + value : baseUrl();
-    if (location.href === url) return;
-    if (replace) history.replaceState(null, "", url);
-    else         history.pushState(null, "", url);
-  }
-
-  /* Create-or-update a <meta> tag by name or property. */
-  function metaTag(key, value, isProperty) {
-    if (!value) return;
-    var attr = isProperty ? "property" : "name";
-    var el = document.querySelector('meta[' + attr + '="' + key + '"]');
-    if (!el) {
-      el = document.createElement("meta");
-      el.setAttribute(attr, key);
-      document.head.appendChild(el);
-    }
-    el.setAttribute("content", value);
-  }
-
-  /* Rewrite the head for the current view. */
-  function setMeta(opts) {
-    var title = opts.title || PAGE_TITLE;
-    var desc  = opts.desc  || "";
-    var img   = opts.img   || "";
-
-    document.title = title;
-
-    metaTag("description", desc);
-    metaTag("og:title", title, true);
-    metaTag("og:description", desc, true);
-    metaTag("og:type", img ? "article" : "website", true);
-    metaTag("og:url", location.href, true);
-    metaTag("twitter:card", img ? "summary_large_image" : "summary");
-    metaTag("twitter:title", title);
-    metaTag("twitter:description", desc);
-
-    if (img) {
-      metaTag("og:image", img, true);
-      metaTag("twitter:image", img);
-    }
-  }
-
-  /* Called whenever the open image changes. */
-  function markImage(item) {
-    if (!item) return;
-    lastImageN = item.n;
-    var label = item.label ? " " + item.label : "";
-    setUrl("v", item.n, lb.classList.contains("open"));
-    if (lb.classList.contains("open") && lastFocus) {
-      /* opening a fresh image pushes history; stepping replaces it */
-      var opened = (history.state && history.state.n === item.n);
-      if (!opened) {
-        history.replaceState({ n: item.n }, "", baseUrl() + "?v=" + item.n);
-      }
-    }
-    setMeta({
-      title: PAGE_TITLE + " — #" + item.n + label,
-      desc:  item.label || "",
-      img:   absUrl(DIR(item.n) + "mid.jpg")
-    });
-  }
-
-  /* Read ?v= or ?info= on load. */
-  function readSharedUrl(isInitial) {
-    var params = new URLSearchParams(location.search);
-    var v = params.get("v");
-
-    if (v && /^\d+$/.test(v)) {
-      var n = parseInt(v, 10);
-      var idx = -1;
-      for (var i = 0; i < items.length; i++) {
-        if (items[i].n === n) { idx = i; break; }
-      }
-      if (idx !== -1) {
-        if (!lb.classList.contains("open")) {
-          lastFocus = document.activeElement;
-          lb.classList.add("open");
-          document.body.style.overflow = "hidden";
-          show(idx);
-        } else {
-          show(idx);
-        }
-        markImage(items[idx]);
-        return true;
-      }
-    }
-
-    if (params.get("info")) {
-      showInfo();
-      return true;
-    }
-
-    return false;
-  }
-
-  /* Open straight into a shared view when the page loads. */
-  if (!readSharedUrl(true)) {
-    /* plain list: make sure the URL and meta are clean */
-    setUrl(null, null, true);
-  }
-
-  /* Back / forward between shared links. */
-  window.addEventListener("popstate", function () {
-    var params = new URLSearchParams(location.search);
-    var v = params.get("v");
-
-    if (v && /^\d+$/.test(v)) {
-      var n = parseInt(v, 10);
-      for (var i = 0; i < items.length; i++) {
-        if (items[i].n === n) { open(i); return; }
-      }
-    }
-
-    if (params.get("info")) { showInfo(); return; }
-
-    if (lb.classList.contains("open")) close();
-    else if (!info.classList.contains("hidden")) showList();
   });
 })();
 </script>
